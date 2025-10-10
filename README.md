@@ -14,16 +14,16 @@ A comprehensive Laravel package for tracking model changes with support for mult
 
 ## Installation
 
-### Step 1: Add Path Repository (for local development)
+### Step 1: Add GitHub Repository
 
-In your project's `composer.json`, add the path repository:
+In your project's `composer.json`, add the GitHub repository:
 
 ```json
 {
     "repositories": [
         {
-            "type": "path",
-            "url": "./packages/jimbarrett/laravel-audit-logger"
+            "type": "vcs",
+            "url": "https://github.com/jimbarrett/laravel-audit-logger"
         }
     ]
 }
@@ -32,14 +32,18 @@ In your project's `composer.json`, add the path repository:
 ### Step 2: Require the Package
 
 ```bash
-composer require jimbarrett/laravel-audit-logger
+composer require jimbarrett/laravel-audit-logger:dev-main
 ```
 
-### Step 3: Publish Configuration (Optional)
+> **Note:** Until a stable release is tagged, use `dev-main`. After tagging versions, you can use semantic versioning like `^1.0`.
+
+### Step 3: Publish Configuration
 
 ```bash
 php artisan vendor:publish --tag=audit-logger-config
 ```
+
+Edit `config/audit-logger.php` to configure your multi-tenancy settings and which models to observe.
 
 ### Step 4: Run Migrations
 
@@ -47,35 +51,104 @@ php artisan vendor:publish --tag=audit-logger-config
 php artisan migrate
 ```
 
+This will create the `model_audits` and `model_audit_entries` tables.
+
 ## Configuration
 
-Edit `config/audit-logger.php` to customize the package:
+After publishing, edit `config/audit-logger.php` to customize the package for your application.
+
+### Basic Configuration
 
 ```php
 return [
     // User model for audit relationships
     'user_model' => \App\Models\User::class,
     
-    // Multi-tenancy context model (e.g., Practice, Organization)
-    'context_model' => \App\Models\Practice::class,
+    // Models to automatically observe
+    'observed_models' => [
+        \App\Models\User::class,
+        \App\Models\Post::class,
+        \App\Models\Order::class,
+        // Add any models you want to track
+    ],
     
-    // Session key for context ID (e.g., 'practice_id')
-    'context_session_key' => 'practice_id',
-    
-    // Fields to redact in logs
+    // Fields to redact in logs (sensitive data protection)
     'sensitive_fields' => [
         'password',
         'password_hash',
         'remember_token',
-        // Add more as needed
+        'api_token',
+        'api_secret',
+        // Add any sensitive field names
     ],
+];
+```
+
+### Multi-Tenancy Configuration (Optional)
+
+**What is multi-tenancy support?**
+
+Multi-tenancy allows you to scope audit logs to a specific tenant (organization, team, workspace, etc.) in your application. This is useful when:
+
+- Multiple organizations use your application and you need to track changes per organization
+- You want to filter audit logs by tenant without complex queries
+- You need to ensure data isolation and compliance per tenant
+- You're building dashboards showing activity within a specific tenant
+
+**How it works:**
+
+The package automatically captures a "context ID" from the session when changes occur. This context ID links the audit log to a specific tenant model (like Organization, Team, or Workspace).
+
+**Configuration:**
+
+```php
+return [
+    // The model representing your tenant (e.g., Organization, Team, Workspace, Practice)
+    'context_model' => \App\Models\Organization::class,
     
-    // Models to automatically observe
-    'observed_models' => [
-        \App\Models\User::class,
-        \App\Models\Patient::class,
-        \App\Models\Appointment::class,
-        // Add models you want to audit
+    // The session key where your tenant ID is stored
+    // This should match whatever key you use when setting the active tenant
+    // Examples: 'organization_id', 'team_id', 'workspace_id', 'practice_id'
+    'context_session_key' => 'organization_id',
+];
+```
+
+**Example: Setting the context in your app:**
+
+```php
+// When a user logs in or switches organizations
+session(['organization_id' => $organization->id]);
+
+// Now all model changes will be linked to this organization
+$post = Post::create([...]);  // Audit log will have context_id = $organization->id
+```
+
+**Querying by tenant:**
+
+```php
+// Get all audits for current organization
+$audits = AuditLog::where('context_id', session('organization_id'))->get();
+
+// Get audits across all organizations (admin view)
+$allAudits = AuditLog::with('context')->get();
+```
+
+**Leave null if not needed:**
+
+If your application is single-tenant or you don't need to scope audits by organization, set these to `null`:
+
+```php
+'context_model' => null,
+'context_session_key' => null,
+```
+
+### Advanced Configuration
+
+```php
+return [
+    // Custom primary key fields for models with non-standard IDs
+    'custom_id_fields' => [
+        \App\Models\CustomModel::class => 'custom_id',
     ],
 ];
 ```
@@ -142,31 +215,57 @@ foreach ($audit->entries as $entry) {
 }
 ```
 
-## Multi-Tenancy Setup
+## Multi-Tenancy Examples
 
-### For Practice-Based Applications (Chiropractic, Medical, etc.)
+Here are common multi-tenancy patterns and how to configure them:
 
-```php
-// config/audit-logger.php
-'context_model' => \App\Models\Practice::class,
-'context_session_key' => 'practice_id',
-```
-
-### For Community-Based Applications
-
-```php
-// config/audit-logger.php
-'context_model' => \App\Models\Community::class,
-'context_session_key' => 'active_community_id',
-```
-
-### For Organization-Based Applications
+### SaaS with Organizations/Companies
 
 ```php
 // config/audit-logger.php
 'context_model' => \App\Models\Organization::class,
 'context_session_key' => 'organization_id',
+
+// In your authentication/switching logic:
+session(['organization_id' => $user->current_organization_id]);
 ```
+
+### Team-Based Applications (Slack, Notion style)
+
+```php
+// config/audit-logger.php
+'context_model' => \App\Models\Team::class,
+'context_session_key' => 'current_team_id',
+
+// When user switches teams:
+session(['current_team_id' => $team->id]);
+```
+
+### Workspace-Based Applications
+
+```php
+// config/audit-logger.php
+'context_model' => \App\Models\Workspace::class,
+'context_session_key' => 'workspace_id',
+```
+
+### Multi-Location Businesses (Retail, Medical Practices, etc.)
+
+```php
+// config/audit-logger.php
+'context_model' => \App\Models\Location::class,
+'context_session_key' => 'current_location_id',
+```
+
+### Single-Tenant Applications
+
+```php
+// config/audit-logger.php
+'context_model' => null,
+'context_session_key' => null,
+```
+
+> **Tip:** You can query audits across tenants using `AuditLog::with('context')` if you need admin-level visibility.
 
 ## What Gets Logged
 
@@ -249,10 +348,22 @@ Set `observed_models` to an empty array and manually register observers:
 ## Testing
 
 ```bash
-cd packages/jimbarrett/laravel-audit-logger
 composer install
 vendor/bin/phpunit
 ```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Changelog
+
+### v1.0.0 (Unreleased)
+- Initial release
+- Automatic model observation
+- Multi-tenant support
+- Sensitive field redaction
+- Field-level change tracking
 
 ## Troubleshooting
 
@@ -269,35 +380,19 @@ vendor/bin/phpunit
 1. Remove models from `observed_models` that don't need auditing
 2. Consider archiving old audit logs periodically
 
-## Migration to Standalone Package
+## Versioning & Releases
 
-When ready to extract to a separate repository:
+This package follows [Semantic Versioning](https://semver.org/).
+
+To create a new release:
 
 ```bash
-# Create new repo
-mkdir ~/laravel-audit-logger
-cd ~/laravel-audit-logger
-git init
-
-# Copy package files
-cp -r packages/jimbarrett/laravel-audit-logger/* .
-
-# Update composer.json in main project
-# Change from path to vcs repository:
-{
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/jimbarrett/laravel-audit-logger"
-        }
-    ]
-}
-
-# Tag and push
-git add .
-git commit -m "Initial commit"
+# Tag a version
 git tag v1.0.0
-git push origin main --tags
+git push origin v1.0.0
+
+# Update composer.json requirement in your app
+"jimbarrett/laravel-audit-logger": "^1.0"
 ```
 
 ## License
