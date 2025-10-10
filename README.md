@@ -14,9 +14,11 @@ A comprehensive Laravel package for tracking model changes with support for mult
 
 ## Installation
 
+> **Note:** This package is hosted on GitHub and not yet published to Packagist. You must add the repository to your `composer.json` before installation.
+
 ### Step 1: Add GitHub Repository
 
-In your project's `composer.json`, add the GitHub repository:
+In your project's `composer.json`, add the repository configuration:
 
 ```json
 {
@@ -29,21 +31,35 @@ In your project's `composer.json`, add the GitHub repository:
 }
 ```
 
-### Step 2: Require the Package
+This tells Composer where to find the package since it's not on Packagist.
+
+### Step 2: Install the Package
+
+**Option A: Using composer require**
 
 ```bash
 composer require jimbarrett/laravel-audit-logger
 ```
 
-Composer will automatically install the latest stable version. You can also specify a version constraint:
+**Option B: Manual installation**
+
+Add to your `composer.json` require section:
+
+```json
+{
+    "require": {
+        "jimbarrett/laravel-audit-logger": "^1.0"
+    }
+}
+```
+
+Then run:
 
 ```bash
-# Require version 1.x (recommended)
-composer require jimbarrett/laravel-audit-logger:^1.0
-
-# Or require the development branch
-composer require jimbarrett/laravel-audit-logger:dev-main
+composer install
 ```
+
+> **Version constraints:** Use `^1.0` to get the latest stable 1.x version, or `dev-main` for the development branch.
 
 ### Step 3: Publish Configuration
 
