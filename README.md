@@ -32,10 +32,18 @@ In your project's `composer.json`, add the GitHub repository:
 ### Step 2: Require the Package
 
 ```bash
-composer require jimbarrett/laravel-audit-logger:dev-main
+composer require jimbarrett/laravel-audit-logger
 ```
 
-> **Note:** Until a stable release is tagged, use `dev-main`. After tagging versions, you can use semantic versioning like `^1.0`.
+Composer will automatically install the latest stable version. You can also specify a version constraint:
+
+```bash
+# Require version 1.x (recommended)
+composer require jimbarrett/laravel-audit-logger:^1.0
+
+# Or require the development branch
+composer require jimbarrett/laravel-audit-logger:dev-main
+```
 
 ### Step 3: Publish Configuration
 
@@ -358,12 +366,14 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Changelog
 
-### v1.0.0 (Unreleased)
-- Initial release
-- Automatic model observation
-- Multi-tenant support
-- Sensitive field redaction
-- Field-level change tracking
+### v1.0.0 (2025-10-10)
+- 🎉 Initial stable release
+- Automatic model observation for create, update, delete, and restore events
+- Multi-tenant support with configurable context model
+- Sensitive field redaction for security
+- Field-level change tracking with old/new values
+- Optimized database schema with proper indexing
+- Comprehensive documentation and examples
 
 ## Troubleshooting
 
