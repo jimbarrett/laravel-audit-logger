@@ -2,6 +2,7 @@
 
 namespace JimBarrett\LaravelAuditLogger\Tests;
 
+use JimBarrett\LaravelAuditLogger\Exceptions\ContextNotConfigured;
 use JimBarrett\LaravelAuditLogger\Models\AccessLog;
 use JimBarrett\LaravelAuditLogger\Services\AccessLogService;
 use JimBarrett\LaravelAuditLogger\Support\AuditContext;
@@ -148,6 +149,19 @@ class AccessLogServiceTest extends TestCase
 
         $this->assertTrue($this->service->log($this->patient, 'profile_view'));
         $this->assertSame($this->user->id, AccessLog::first()->user_id);
+    }
+
+    public function test_an_unconfigured_context_relation_fails_loudly(): void
+    {
+        // Returning null from a relation method is not a valid Eloquent relation: it
+        // fatals on property access with an error that names neither the config key
+        // nor the relation.
+        config(['audit-logger.sub_context_model' => null]);
+
+        $this->service->log($this->patient, 'profile_view', $this->user->id);
+
+        $this->expectException(ContextNotConfigured::class);
+        AccessLog::first()->subContext;
     }
 
     public function test_the_for_subject_scope_finds_a_records_access(): void

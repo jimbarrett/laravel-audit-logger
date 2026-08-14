@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use JimBarrett\LaravelAuditLogger\Exceptions\ContextNotConfigured;
 use JimBarrett\LaravelAuditLogger\Support\AuditContext;
 
 /**
@@ -60,30 +61,30 @@ class AuditLog extends Model
     /**
      * Get the context model (e.g., Practice, Community, Organization).
      *
-     * @return BelongsTo|null
+     * @return BelongsTo
      */
-    public function context(): ?BelongsTo
+    public function context(): BelongsTo
     {
         $contextModel = config('audit-logger.context_model');
-        
-        if (!$contextModel) {
-            return null;
+
+        if (! $contextModel) {
+            throw ContextNotConfigured::for('context_model', 'context');
         }
-        
+
         return $this->belongsTo($contextModel, 'context_id');
     }
 
     /**
      * Get the sub-context model (e.g., Location within a Practice).
      *
-     * @return BelongsTo|null
+     * @return BelongsTo
      */
-    public function subContext(): ?BelongsTo
+    public function subContext(): BelongsTo
     {
         $subContextModel = config('audit-logger.sub_context_model');
 
         if (! $subContextModel) {
-            return null;
+            throw ContextNotConfigured::for('sub_context_model', 'subContext');
         }
 
         return $this->belongsTo($subContextModel, 'sub_context_id');
