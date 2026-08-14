@@ -542,7 +542,7 @@ Applications that were logging record access by hand should move that data into
 
 ## Changelog
 
-### v2.0.0 (unreleased)
+### v2.0.0 (2026-08-14)
 - 👁️ Access logging: `AccessLog`, `AccessLogService`, and the `LogSubjectAccess` middleware
 - 🧭 `AuditContext` resolves the acting user and tenancy context explicitly first, request
   second, so writes from seeders, jobs and console commands are attributable
