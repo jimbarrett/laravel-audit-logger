@@ -61,7 +61,7 @@ Add to your `composer.json` require section:
 ```json
 {
     "require": {
-        "jimbarrett/laravel-audit-logger": "^1.0"
+        "jimbarrett/laravel-audit-logger": "^2.0"
     }
 }
 ```
@@ -72,7 +72,8 @@ Then run:
 composer install
 ```
 
-> **Version constraints:** Use `^1.0` to get the latest stable 1.x version, or `dev-main` for the development branch.
+> **Version constraints:** Use `^2.0` for the current stable release. `^1.0` is the previous
+> major and has no access logging; see the upgrade guide below.
 
 ### Step 3: Publish Configuration
 
@@ -88,7 +89,7 @@ Edit `config/audit-logger.php` to configure your multi-tenancy settings and whic
 php artisan migrate
 ```
 
-This will create the `model_audits` and `model_audit_entries` tables.
+This will create the `model_audits`, `model_audit_entries` and `subject_access_logs` tables.
 
 ## Configuration
 
