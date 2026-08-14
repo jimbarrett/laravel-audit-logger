@@ -4,7 +4,9 @@ namespace JimBarrett\LaravelAuditLogger;
 
 use Illuminate\Support\ServiceProvider;
 use JimBarrett\LaravelAuditLogger\Observers\AuditObserver;
+use JimBarrett\LaravelAuditLogger\Services\AccessLogService;
 use JimBarrett\LaravelAuditLogger\Services\AuditLogService;
+use JimBarrett\LaravelAuditLogger\Support\AuditContext;
 
 class AuditLoggerServiceProvider extends ServiceProvider
 {
@@ -18,9 +20,19 @@ class AuditLoggerServiceProvider extends ServiceProvider
             __DIR__.'/../config/audit-logger.php', 'audit-logger'
         );
 
-        // Register the service as a singleton
+        // Register the services as singletons
         $this->app->singleton(AuditLogService::class, function ($app) {
             return new AuditLogService();
+        });
+
+        // Singleton so that an explicit context set in a job or seeder holds for every
+        // write in that process until it is cleared.
+        $this->app->singleton(AuditContext::class, function ($app) {
+            return new AuditContext();
+        });
+
+        $this->app->singleton(AccessLogService::class, function ($app) {
+            return new AccessLogService($app->make(AuditContext::class));
         });
     }
 

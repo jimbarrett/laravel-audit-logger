@@ -1,16 +1,29 @@
 # Laravel Audit Logger
 
-A comprehensive Laravel package for tracking model changes with support for multi-tenancy, sensitive field redaction, and detailed change history.
+A comprehensive Laravel package for tracking who changed a record and who read one, with support for multi-tenancy, sensitive field redaction, and detailed change history.
+
+Compliance regimes ask two different questions, and they cannot share an implementation:
+
+| Question | Mechanism | Table |
+|---|---|---|
+| Who **changed** this record? | Eloquent observer | `model_audits` + `model_audit_entries` |
+| Who **looked at** this record? | HTTP middleware / explicit calls | `subject_access_logs` |
+
+Reads cannot be captured with model observers. Eloquent's `retrieved` event fires on every
+hydration, so a record appearing in a search result would log as though someone opened it.
+Access logging therefore runs at the HTTP layer, in far higher volume, with its own
+deduplication.
 
 ## Features
 
 - 🔍 **Automatic Tracking**: Observes Eloquent models for create, update, delete, and restore events
-- 🏢 **Multi-Tenancy Support**: Built-in support for multi-tenant applications
+- 👁️ **Access Logging**: Records reads of protected records, with deduplication
+- 🏢 **Multi-Tenancy Support**: Two levels of tenancy context (e.g. Practice and Location)
+- 🧭 **Attributable Outside HTTP**: Seeders, jobs and commands can set context explicitly
 - 🔒 **Security**: Automatic redaction of sensitive fields (passwords, tokens, etc.)
 - 📝 **Detailed Logging**: Tracks field-level changes with old and new values
 - 🎯 **Flexible Configuration**: Customize what gets logged and how
 - ⚡ **Performance**: Optimized queries with proper indexing
-- 🧪 **Well Tested**: Comprehensive test coverage
 
 ## Installation
 
@@ -342,7 +355,132 @@ Set `observed_models` to an empty array and manually register observers:
 'observed_models' => [],
 ```
 
+## Access Logging
+
+### Morph map (required)
+
+Both tables store **short class names** (`Patient`, not `App\Models\Patient`), so
+namespaces never end up baked into permanent audit rows. Register a morph map so those
+values resolve back to classes:
+
+```php
+// app/Providers/AppServiceProvider.php
+use Illuminate\Database\Eloquent\Relations\Relation;
+
+public function boot(): void
+{
+    Relation::enforceMorphMap([
+        'Patient' => \App\Models\Patient::class,
+        'SoapNote' => \App\Models\SoapNote::class,
+    ]);
+}
+```
+
+The package does not call `enforceMorphMap()` itself: it is global state affecting every
+morph relation in your application, so it belongs to the application. Without a map,
+`$accessLog->subject` throws `UnresolvableSubjectType` rather than failing quietly.
+
+### Middleware
+
+Register on routes that display a protected record. It **must** run after
+`SubstituteBindings`, so the route parameter arrives as a model. Placing it inside the
+`web` group is enough. If it runs too early it throws `AccessLogMisconfigured` rather than
+logging nothing forever.
+
+```php
+// config/audit-logger.php
+'access_log' => [
+    'subject_model' => \App\Models\Patient::class,
+    'route_parameter' => 'patient',
+    'default_access_type' => 'profile_view',
+    'dedupe_minutes' => 5,
+],
+```
+
+```php
+Route::get('/patients/{patient}', [PatientsController::class, 'show'])
+    ->middleware(LogSubjectAccess::class);
+
+// Or override the access type per route
+Route::get('/patients/{patient}/chart', [ChartController::class, 'show'])
+    ->middleware(LogSubjectAccess::class.':chart_view');
+```
+
+### Direct calls
+
+The middleware fires once per page load. For finer granularity (which tab, which panel),
+call the service. Authorization is the application's job: the package records access, it
+does not decide who may have it.
+
+```php
+app(AccessLogService::class)->log($patient, 'insurance');
+```
+
+### Querying
+
+```php
+// Everyone who touched this record
+AccessLog::forSubject($patient)->with('user')->latest()->get();
+
+// Everything one user looked at last week
+AccessLog::where('user_id', $user->id)
+    ->betweenDates(now()->subWeek(), now())
+    ->get();
+```
+
+## Attribution Outside HTTP Requests
+
+Every audit row records **who** did something and **which tenant** it belongs to. Both are
+derived from the request by default: the user from the auth guard, the context from the
+session. Seeders, queue jobs, console commands and migrations have neither, so their rows
+land anonymous and contextless unless you say otherwise:
+
+```php
+use JimBarrett\LaravelAuditLogger\Support\AuditContext;
+
+app(AuditContext::class)->scope($practice->id, $location->id, function () {
+    Patient::factory()->count(20)->create();
+}, userId: $admin->id);
+```
+
+`scope()` restores the previous state afterwards, including when the callback throws. For
+a long-lived process, the setters do the same job without a closure:
+
+```php
+$context = app(AuditContext::class);
+
+$context->override($practice->id, $location->id);   // tenant
+$context->actingAs($user->id);                      // actor
+// ... work ...
+$context->clear();
+```
+
+User and context are tracked independently, because they vary independently: a queued job
+dispatched from a request knows its user but has lost the session, while a nightly command
+knows the tenant it is processing but has no user at all. Setting one never blanks the
+other.
+
+`actingAs(null)` is meaningful, not a no-op. It records work as explicitly unattributed,
+which is more honest than borrowing whichever user happens to be authenticated.
+
+> **Worth checking on an existing install:** rows written before this existed will have
+> null user and context. `SELECT COUNT(*) FROM model_audits WHERE context_id IS NULL` tells
+> you how much of your history is unattributable.
+
 ## Database Schema
+
+### subject_access_logs table
+- `id`: Primary key
+- `subject_type`: Short class name of the accessed record (needs a morph map)
+- `subject_id`: ID of the accessed record
+- `user_id`: Who accessed it
+- `access_type`: Application-defined label (e.g. `profile_view`, `notes`)
+- `ip_address`: Request IP
+- `context_id` / `sub_context_id`: Tenancy context
+- `created_at`: When
+
+No foreign keys, by design. Cascading from the subject or the user would delete the record
+of who accessed what at exactly the moment it matters most.
 
 ### model_audits table
 - `id`: Primary key
@@ -380,7 +518,41 @@ vendor/bin/phpunit
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+## Upgrading from v1 to v2
+
+v2 adds read auditing and fixes context attribution. Four things need attention:
+
+1. **Run the new migrations.** They create `subject_access_logs` and add `sub_context_id`
+   to `model_audits`. Both are additive; no existing data changes.
+2. **Register a morph map** if you want to use `$auditLog->model` or
+   `$accessLog->subject`. Existing `model_type` values are already short class names, so
+   no data migration is needed. If you previously worked around the short names by string
+   matching (`where('model_type', 'LIKE', '%\\'.$name)`), you can drop that now.
+3. **Set user and context explicitly in seeders, jobs and console commands.** Previously
+   these wrote rows with a null `user_id` and `context_id` silently. They still will
+   unless wrapped in `AuditContext::scope()`. Check what you already have:
+   `SELECT COUNT(*) FROM model_audits WHERE context_id IS NULL OR user_id IS NULL`.
+4. **Configure `sub_context_*`** if your tenancy has two levels. Leaving them null keeps
+   v1 behavior.
+
+Applications that were logging record access by hand should move that data into
+`subject_access_logs` and delete their own table. The column mapping is
+`patient_id` to `subject_type` + `subject_id`, `practice_id` to `context_id`, and
+`location_id` to `sub_context_id`.
+
 ## Changelog
+
+### v2.0.0 (unreleased)
+- 👁️ Access logging: `AccessLog`, `AccessLogService`, and the `LogSubjectAccess` middleware
+- 🧭 `AuditContext` resolves the acting user and tenancy context explicitly first, request
+  second, so writes from seeders, jobs and console commands are attributable
+- 🏢 Second tenancy dimension via `sub_context_model` / `sub_context_session_key`, added to
+  both `model_audits` and `subject_access_logs`
+- 🔗 `AuditLog::model()` and `AccessLog::subject()` morph relations, requiring an
+  application-registered morph map
+- 💥 Breaking: `model_audits` gains `sub_context_id`; context resolution no longer reads
+  the session directly; the package now requires `illuminate/http`
+- 🧪 Real test coverage replacing the v1 placeholder stubs (34 tests)
 
 ### v1.0.0 (2025-10-10)
 - 🎉 Initial stable release
