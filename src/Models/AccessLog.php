@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use JimBarrett\LaravelAuditLogger\Exceptions\ContextNotConfigured;
 use JimBarrett\LaravelAuditLogger\Exceptions\UnresolvableSubjectType;
+use JimBarrett\LaravelAuditLogger\Traits\BelongsToAuditUser;
 
 /**
  * Access log model, recording reads of a subject rather than writes to it.
@@ -19,7 +20,7 @@ use JimBarrett\LaravelAuditLogger\Exceptions\UnresolvableSubjectType;
  */
 class AccessLog extends Model
 {
-    use HasFactory;
+    use HasFactory, BelongsToAuditUser;
 
     protected $table = 'subject_access_logs';
 
@@ -58,18 +59,6 @@ class AccessLog extends Model
         }
 
         return $this->morphTo();
-    }
-
-    /**
-     * Get the user who accessed the record.
-     *
-     * @return BelongsTo
-     */
-    public function user(): BelongsTo
-    {
-        $userModel = config('audit-logger.user_model', \App\Models\User::class);
-
-        return $this->belongsTo($userModel);
     }
 
     /**

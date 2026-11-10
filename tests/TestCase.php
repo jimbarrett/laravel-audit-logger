@@ -61,6 +61,12 @@ abstract class TestCase extends BaseTestCase
             $table->string('name')->nullable();
         });
 
+        Schema::create('test_soft_deleting_users', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->softDeletes();
+        });
+
         Schema::create('test_patients', function (Blueprint $table) {
             $table->id();
             $table->string('name')->nullable();

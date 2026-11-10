@@ -9,13 +9,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use JimBarrett\LaravelAuditLogger\Exceptions\ContextNotConfigured;
 use JimBarrett\LaravelAuditLogger\Support\AuditContext;
+use JimBarrett\LaravelAuditLogger\Traits\BelongsToAuditUser;
 
 /**
  * Audit Log model for tracking model changes.
  */
 class AuditLog extends Model
 {
-    use HasFactory;
+    use HasFactory, BelongsToAuditUser;
 
     protected $table = 'model_audits';
 
@@ -45,17 +46,6 @@ class AuditLog extends Model
 
             $model->created_at = now();
         });
-    }
-
-    /**
-     * Get the user who made the change.
-     *
-     * @return BelongsTo
-     */
-    public function user(): BelongsTo
-    {
-        $userModel = config('audit-logger.user_model', \App\Models\User::class);
-        return $this->belongsTo($userModel);
     }
 
     /**

@@ -99,7 +99,8 @@ After publishing, edit `config/audit-logger.php` to customize the package for yo
 
 ```php
 return [
-    // User model for audit relationships
+    // User model for audit relationships. If it uses SoftDeletes, removed users are
+    // still returned by AuditLog::user() and AccessLog::user().
     'user_model' => \App\Models\User::class,
     
     // Models to automatically observe
@@ -542,6 +543,11 @@ Applications that were logging record access by hand should move that data into
 `location_id` to `sub_context_id`.
 
 ## Changelog
+
+### v2.1.0 (2026-11-10)
+- 🪪 `AuditLog::user()` and `AccessLog::user()` include soft-deleted users when the
+  configured user model uses `SoftDeletes`, so a change by someone since removed still
+  names them instead of reading as anonymous
 
 ### v2.0.0 (2026-08-14)
 - 👁️ Access logging: `AccessLog`, `AccessLogService`, and the `LogSubjectAccess` middleware
